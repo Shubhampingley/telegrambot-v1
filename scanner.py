@@ -13,7 +13,8 @@ TELEGRAM_CHAT_ID = '665594180'
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    requests.post(url, json=payload)
+    res = requests.post(url, json=payload)
+    print(f"Telegram response: {res.status_code}, {res.text}")
 
 # === Get NSE Symbols from Bhavcopy ===
 def get_nse_symbols():
@@ -35,35 +36,39 @@ def get_nse_symbols():
         print(f"Bhavcopy load failed: {e}")
         return []
 
-# === VCP Detection ===
+# === VCP Detection (Light Test Version) ===
 def detect_vcp(df):
     try:
-        # Check for 4 consecutive contracting ranges
         ranges = (df['High'] - df['Low']).tail(5)
-        contracting = all(ranges[i] > ranges[i+1] for i in range(3))
-
-        # Volume contraction over last 4 days
         volumes = df['Volume'].tail(5)
-        volume_contracting = all(volumes[i] > volumes[i+1] for i in range(3))
 
-        # Breakout candle: close > recent highs
+        # Less strict: only check last 2 ranges and volumes
+        contracting = ranges.iloc[-3] > ranges.iloc[-2] > ranges.iloc[-1]
+        volume_contracting = volumes.iloc[-3] > volumes.iloc[-2] > volumes.iloc[-1]
+
         breakout = df['Close'].iloc[-1] > df['High'].iloc[-4:-1].max()
 
         return contracting and volume_contracting and breakout
-    except:
+    except Exception as e:
+        print(f"VCP logic failed: {e}")
         return False
 
 # === Main Scanner ===
 symbols = get_nse_symbols()
+if not symbols:
+    symbols = []
 
-# Add a known example to test during live market
-if 'TATAPOWER.NS' not in symbols:
-    symbols.append('TATAPOWER.NS')
+# Always include fallback stock for testing
+test_stock = "TATAPOWER.NS"
+if test_stock not in symbols:
+    symbols.append(test_stock)
+
+print(f"Scanning {len(symbols)} stocks...")
 
 for symbol in symbols:
     try:
         df = yf.download(symbol, period="10d", interval="1d", progress=False)
-        if len(df) < 10:
+        if len(df) < 7:
             continue
 
         matches = []
@@ -72,7 +77,9 @@ for symbol in symbols:
             matches.append("VCP")
 
         if matches:
-            send_telegram(f"📈 {symbol} match:\n" + " + ".join(matches))
+            msg = f"📈 {symbol} match:\n" + " + ".join(matches)
+            print(msg)
+            send_telegram(msg)
 
     except Exception as e:
         print(f"{symbol} failed: {e}")
