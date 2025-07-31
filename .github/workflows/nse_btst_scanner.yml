@@ -2,7 +2,7 @@ name: NSE BTST Scanner Bot
 
 on:
   schedule:
-    - cron: '*/15 3-10 * * 1-5'  # Every 15 mins (8:30 AM to 3:30 PM IST)
+    - cron: '*/15 3-10 * * 1-5'  # Every 15 mins during market hours
   workflow_dispatch:
 
 jobs:
