@@ -2,8 +2,6 @@ yfinance
 requests
 pandas
 flask
-requests
-pandas
 gspread
 oauth2client
 python-dotenv
