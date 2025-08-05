@@ -15,6 +15,8 @@ jobs:
         run: |
           echo "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" >> $GITHUB_ENV
           echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> $GITHUB_ENV
+          echo "ANGEL_API_KEY=${{ secrets.ANGEL_API_KEY }}" >> $GITHUB_ENV
+          echo "ANGEL_CLIENT_CODE=${{ secrets.ANGEL_CLIENT_CODE }}" >> $GITHUB_ENV
 
       - name: Set up Python
         uses: actions/setup-python@v4
