@@ -1,98 +1,96 @@
 import os
 import requests
-from datetime import datetime
 from telegram import Bot
 
-# Load environment variables
+# Load secrets from GitHub Actions
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 ANGEL_API_KEY = os.getenv("ANGEL_API_KEY")
 ANGEL_CLIENT_CODE = os.getenv("ANGEL_CLIENT_CODE")
 
-# Angel One endpoints
-ANGEL_BASE_URL = "https://apiconnect.angelbroking.com/rest/secure/angelbroking"
-LOGIN_URL = f"{ANGEL_BASE_URL}/user/v1/loginByPassword"
-QUOTES_URL = f"{ANGEL_BASE_URL}/market/v1/quote"
+# Example static Angel One auth token (in production, automate this via login flow)
+ANGEL_AUTH_TOKEN = os.getenv("ANGEL_AUTH_TOKEN")  # This should be set via secrets
 
-# Session token (you may cache this with Redis or GitHub Secrets)
-session_token = ""
-
-# Sample list — replace with all NSE symbols or load from file
-symbols = ["RELIANCE-EQ", "TCS-EQ", "INFY-EQ", "HDFCBANK-EQ", "ICICIBANK-EQ", 
-           "SBIN-EQ", "HINDUNILVR-EQ", "ITC-EQ", "LT-EQ", "AXISBANK-EQ"]
+BASE_URL = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1"
 
 headers = {
     "X-PrivateKey": ANGEL_API_KEY,
+    "X-ClientLocalIP": "127.0.0.1",
+    "X-ClientPublicIP": "127.0.0.1",
+    "X-MACAddress": "00:00:00:00:00:00",
+    "X-UserType": "USER",
+    "X-SourceID": "WEB",
     "Accept": "application/json",
-    "Content-Type": "application/json"
+    "X-ClientCode": ANGEL_CLIENT_CODE,
+    "Authorization": f"Bearer {ANGEL_AUTH_TOKEN}"
 }
 
-
-def fetch_quote(symbol):
-    payload = {
-        "mode": "FULL",
-        "exchange": "NSE",
-        "symboltoken": "",
-        "tradingsymbol": symbol,
-    }
-
-    try:
-        r = requests.post(QUOTES_URL, headers=headers, json=payload)
-        data = r.json()
-        return data["data"]
-    except Exception as e:
-        print(f"Failed for {symbol}: {e}")
-        return None
-
-
 def send_telegram_message(message):
-    bot = Bot(token=TELEGRAM_TOKEN)
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode="Markdown")
+    try:
+        bot = Bot(token=TELEGRAM_TOKEN)
+        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode='HTML')
+    except Exception as e:
+        print(f"Telegram Error: {e}")
 
+def get_market_data():
+    try:
+        # List of sample stock symbols (replace with full NSE list if needed)
+        symbols = ["RELIANCE-EQ", "INFY-EQ", "TCS-EQ", "SBIN-EQ", "HDFCBANK-EQ", "ICICIBANK-EQ"]
+        results = []
+
+        for symbol in symbols:
+            payload = {
+                "exchange": "NSE",
+                "symboltoken": "",  # Required if using quote endpoint (need mapping)
+                "tradingsymbol": symbol
+            }
+
+            r = requests.post(f"{BASE_URL}/quote", headers=headers, json=payload)
+            data = r.json()
+
+            if "data" in data:
+                results.append({
+                    "symbol": symbol,
+                    "ltp": data["data"].get("ltp"),
+                    "dayHigh": data["data"].get("high"),
+                    "dayLow": data["data"].get("low"),
+                    "volume": data["data"].get("volume"),
+                    "yearHigh": data["data"].get("yearlyhighprice"),
+                    "yearLow": data["data"].get("yearlylowprice"),
+                })
+
+        return results
+
+    except Exception as e:
+        print(f"Error fetching market data: {e}")
+        return []
 
 def scan():
-    results = []
+    stocks = get_market_data()
+    if not stocks:
+        send_telegram_message("⚠️ No market data available.")
+        return
 
-    for symbol in symbols:
-        quote = fetch_quote(symbol)
-        if not quote:
-            continue
+    # Filters
+    week_high_hits = sorted([s for s in stocks if s["ltp"] and s["yearHigh"] and s["ltp"] >= s["yearHigh"] * 0.98], key=lambda x: x["ltp"], reverse=True)[:10]
+    volume_hits = sorted([s for s in stocks if s["volume"]], key=lambda x: x["volume"], reverse=True)[:10]
+    day_high_hits = sorted([s for s in stocks if s["ltp"] and s["dayHigh"] and s["ltp"] >= s["dayHigh"] * 0.98], key=lambda x: x["ltp"], reverse=True)[:10]
+    day_low_hits = sorted([s for s in stocks if s["ltp"] and s["dayLow"] and s["ltp"] <= s["dayLow"] * 1.02], key=lambda x: x["ltp"])[:10]
 
-        try:
-            ltp = float(quote["lastPrice"])
-            day_high = float(quote["high"])
-            day_low = float(quote["low"])
-            week_52_high = float(quote["week52High"])
-            volume = int(quote["volume"])
-            avg_volume = int(quote.get("avgVolTradedPerDay", 1))
+    msg = "<b>📊 Auto Stock Scanner Results:</b>\n\n"
 
-            if week_52_high and ltp >= 0.97 * week_52_high:
-                results.append((symbol, ltp, "52WH"))
+    def format_stocks(title, data):
+        if not data:
+            return f"<b>{title}</b>\nNo stocks found.\n\n"
+        lines = [f"{i+1}. <b>{s['symbol']}</b> @ ₹{s['ltp']}" for i, s in enumerate(data)]
+        return f"<b>{title}</b>\n" + "\n".join(lines) + "\n\n"
 
-            elif ltp == day_high:
-                results.append((symbol, ltp, "Day High"))
+    msg += format_stocks("🚀 Near 52-Week Highs", week_high_hits)
+    msg += format_stocks("🔥 Top Volumes", volume_hits)
+    msg += format_stocks("📈 Day Highs", day_high_hits)
+    msg += format_stocks("📉 Day Lows", day_low_hits)
 
-            elif ltp == day_low:
-                results.append((symbol, ltp, "Day Low"))
-
-            elif avg_volume and volume >= 2 * avg_volume:
-                results.append((symbol, ltp, "High Vol"))
-
-        except Exception as e:
-            print(f"Error in {symbol}: {e}")
-            continue
-
-    # Sort and get top 10
-    top_10 = results[:10]
-
-    if top_10:
-        msg = "*🔍 Angel Scanner Results:*\n\n"
-        for sym, price, tag in top_10:
-            msg += f"➡️ *{sym}* @ ₹{price} — `{tag}`\n"
-        send_telegram_message(msg)
-    else:
-        send_telegram_message("⚠️ No matching stocks found at this moment.")
-
+    send_telegram_message(msg)
 
 if __name__ == "__main__":
     scan()
