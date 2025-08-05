@@ -1,15 +1,24 @@
-name: Manual Angel Scanner
+name: Angel Stock Scanner
 
 on:
   schedule:
-    - cron: "*/2 3-10 * * 1-5"  # Every 2 mins from 8:30 AM–3:30 PM UTC (9:00–4:00 IST)
+    - cron: '*/2 3-10 * * 1-5'  # Every 2 minutes from 8:30am to 3:30pm UTC (IST 9:00am - 4:00pm)
   workflow_dispatch:
 
 jobs:
   scan:
     runs-on: ubuntu-latest
+
+    env:
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
+      ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
+      ANGEL_PASSWORD: ${{ secrets.ANGEL_PASSWORD }}
+      ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
+
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -21,13 +30,6 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run Angel Scanner
+      - name: Run Angel Stock Scanner
         run: |
           python scanner.py
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
-          ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
-          ANGEL_PASSWORD: ${{ secrets.ANGEL_PASSWORD }}
-          ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
