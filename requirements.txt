@@ -1,7 +1,3 @@
 requests
-pandas
-python-telegram-bot==13.15
 pyotp
-smartapi-python
-logzero
-websocket-client
+python-telegram-bot==13.15
