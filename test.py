@@ -3,7 +3,7 @@ import pyotp
 import requests
 from telegram import Bot
 
-# ─── Load your secrets from environment variables ─────────────────────────
+# ─── Load secrets ─────────────────────────────────────────────────────────────
 TELEGRAM_TOKEN    = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
 ANGEL_API_KEY     = os.getenv("ANGEL_API_KEY")
@@ -17,10 +17,10 @@ def send(msg):
     bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg)
 
 def test_login_and_telegram():
-    # 1. Generate TOTP
+    # 1) Generate TOTP
     totp = pyotp.TOTP(ANGEL_TOTP_SECRET).now()
 
-    # 2. Call Angel One MPIN login endpoint
+    # 2) Call Angel One MPIN login endpoint
     url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/userauth/v1/loginByPin"
     headers = {
         "X-API-Key": ANGEL_API_KEY,
@@ -32,16 +32,33 @@ def test_login_and_telegram():
         "totp": totp
     }
 
-    resp = requests.post(url, json=payload, headers=headers).json()
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+    except Exception as e:
+        send(f"❌ HTTP request failed: {e}")
+        return
 
-    # 3. Send the raw response to Telegram for visibility
-    send(f"🔍 Angel Login Response:\n{resp}")
+    # 3) Report HTTP status & raw body
+    status = resp.status_code
+    body = resp.text or "<empty>"
+    send(f"🔍 HTTP {status}\n{body}")
 
-    # 4. Confirm success or failure
-    if resp.get("status") and resp["data"].get("jwtToken"):
-        send("✅ Test Successful: Angel MPIN login + Telegram are working!")
+    # 4) Try parsing JSON
+    try:
+        data = resp.json()
+    except Exception as e:
+        send(f"❌ JSON parse error: {e}")
+        return
+
+    # 5) Send JSON response summary
+    send(f"🔍 Parsed JSON:\n{data}")
+
+    # 6) Success check
+    if data.get("status") and data.get("data", {}).get("jwtToken"):
+        send("✅ Test Successful: MPIN login & Telegram working!")
     else:
-        send("❌ Test Failed: Check Angel credentials/TOTP.")
+        msg = data.get("message") or "Unknown error"
+        send(f"❌ Test Failed: {msg}")
 
 if __name__ == "__main__":
     test_login_and_telegram()
