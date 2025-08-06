@@ -25,7 +25,8 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install smartapi-python pyotp python-telegram-bot==13.15
+        run: |
+          pip install smartapi-python pyotp python-telegram-bot==13.15 logzero websocket-client
 
       - name: Run login test
         run: python test.py
