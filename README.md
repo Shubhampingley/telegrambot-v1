@@ -1,1 +1,1 @@
-# tradingview-telegrambot
+# telegrambot-v1
