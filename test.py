@@ -20,8 +20,8 @@ def test_login():
     try:
         api = SmartConnect(api_key=ANGEL_API_KEY)
         totp = pyotp.TOTP(ANGEL_TOTP_SECRET).now()
-        # MPIN login
-        resp = api.generateSession(clientcode=ANGEL_CLIENT_CODE, mpin=ANGEL_MPIN, totp=totp)
+        # Positional args: client_code, mpin, totp
+        resp = api.generateSession(ANGEL_CLIENT_CODE, ANGEL_MPIN, totp)
         print("🔍 LOGIN RESPONSE:", resp)
         short = str(resp)
         if len(short) > 4000: short = short[:4000] + "...(truncated)"
