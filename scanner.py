@@ -17,14 +17,15 @@ bot = Bot(token=TELEGRAM_TOKEN)
 
 def send_telegram_message(msg):
     try:
-        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg)
+        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode="Markdown")
     except Exception as e:
         print("Telegram Error:", e)
 
 def angel_login():
     api = SmartConnect(api_key=ANGEL_API_KEY)
     totp = pyotp.TOTP(ANGEL_TOTP_SECRET).now()
-    resp = api.generateSession(clientcode=ANGEL_CLIENT_CODE, mpin=ANGEL_MPIN, totp=totp)
+    # Positional args here:
+    resp = api.generateSession(ANGEL_CLIENT_CODE, ANGEL_MPIN, totp)
     if not resp or not resp.get("data", {}).get("refreshToken"):
         raise Exception(f"Login failed: {resp}")
     rtok = resp["data"]["refreshToken"]
@@ -54,17 +55,17 @@ def scan():
         top_52  = get_52_week_high(df)
 
         now = datetime.now().strftime("%d-%b %H:%M")
-        msg = f"📊 Market Scan — {now}\n\n"
+        msg = f"📊 *Market Scan* — {now}\n\n"
 
         if not top_vol.empty:
-            msg += "🔥 Top 5 Volume Stocks:\n"
+            msg += "🔥 *Top 5 Volume Stocks:*\n"
             for _, r in top_vol.iterrows():
                 msg += f"• {r['symbol']} — ₹{r['lastPrice']} | Vol: {r['volume']}\n"
         else:
             msg += "⚠️ No volume data.\n"
 
         if not top_52.empty:
-            msg += "\n📈 Near 52W High:\n"
+            msg += "\n📈 *Near 52W High:*\n"
             for _, r in top_52.iterrows():
                 msg += f"• {r['symbol']} — ₹{r['lastPrice']} (52WH: ₹{r['yearHigh']})\n"
         else:
