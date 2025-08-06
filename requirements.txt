@@ -1,3 +1,3 @@
-SmartApi
+smartapi-python
 pyotp
 requests
