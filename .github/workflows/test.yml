@@ -1,4 +1,4 @@
-name: Test Angel & Telegram
+name: Test Angel + Telegram Bot
 
 on:
   workflow_dispatch:
@@ -7,19 +7,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    env:
-      TELEGRAM_TOKEN:    ${{ secrets.TELEGRAM_TOKEN }}
-      TELEGRAM_CHAT_ID:  ${{ secrets.TELEGRAM_CHAT_ID }}
-      ANGEL_API_KEY:     ${{ secrets.ANGEL_API_KEY }}
-      ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
-      ANGEL_MPIN:        ${{ secrets.ANGEL_MPIN }}
-      ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
-
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -27,5 +20,12 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run Test Script
-        run: python test.py
+      - name: Run test
+        env:
+          ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
+          ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
+          ANGEL_PASSWORD: ${{ secrets.ANGEL_PASSWORD }}
+          ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scanner.py
