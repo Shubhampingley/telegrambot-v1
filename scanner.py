@@ -1,11 +1,7 @@
-import os
-import pandas as pd
-from datetime import datetime
+import os, time, requests, pyotp
 from telegram import Bot
-from SmartApi import SmartConnect
-import pyotp
 
-# Load ENV
+# ─── Load Secrets ─────────────────────────────────────────────────────────────
 TELEGRAM_TOKEN    = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
 ANGEL_API_KEY     = os.getenv("ANGEL_API_KEY")
@@ -15,66 +11,74 @@ ANGEL_TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 
 bot = Bot(token=TELEGRAM_TOKEN)
 
-def send_telegram_message(msg):
-    try:
-        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode="Markdown")
-    except Exception as e:
-        print("Telegram Error:", e)
+def send(msg):
+    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg)
 
-def angel_login():
-    api = SmartConnect(api_key=ANGEL_API_KEY)
+# ─── MPIN Login ────────────────────────────────────────────────────────────────
+def mpin_login():
     totp = pyotp.TOTP(ANGEL_TOTP_SECRET).now()
-    # Positional args here:
-    resp = api.generateSession(ANGEL_CLIENT_CODE, ANGEL_MPIN, totp)
-    if not resp or not resp.get("data", {}).get("refreshToken"):
-        raise Exception(f"Login failed: {resp}")
-    rtok = resp["data"]["refreshToken"]
-    prof = api.getProfile(rtok)
-    if not prof or not prof.get("data"):
-        raise Exception(f"Profile fetch failed: {prof}")
-    return api
+    url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/userauth/v1/loginByPin"
+    headers = {
+        "X-API-Key": ANGEL_API_KEY,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "clientcode": ANGEL_CLIENT_CODE,
+        "mpin": ANGEL_MPIN,
+        "totp": totp
+    }
+    resp = requests.post(url, json=payload, headers=headers).json()
+    send(f"🔍 LOGIN RESPONSE:\n{resp}")
+    if not resp.get("status"):
+        raise Exception(resp.get("message"))
+    return resp["data"]["jwtToken"]
 
-def fetch_market_data(api):
-    resp = api.searchScrip("NSE", "")
-    if not resp or not resp.get("data"):
-        raise Exception(f"Fetch failed: {resp}")
-    return pd.DataFrame(resp["data"])
+# ─── Fetch LTP Data ────────────────────────────────────────────────────────────
+def fetch_market(jwt_token):
+    # For a full scanner you'd loop through all symbol/token pairs.
+    SYMBOLS = {
+      "RELIANCE": "2885",
+      "TCS": "11536",
+      "INFY": "1594"
+    }
+    url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/getLtpData"
+    headers = {
+        "Authorization": f"Bearer {jwt_token}",
+        "X-API-Key": ANGEL_API_KEY,
+        "Content-Type": "application/json"
+    }
 
-def get_top_volume(df):
-    return df[df["volume"]>0].sort_values("volume", ascending=False).head(5)
+    rows = []
+    for sym, token in SYMBOLS.items():
+        body = {
+          "exchange": "NSE",
+          "symboltoken": token,
+          "tradingsymbol": sym,
+          "clientcode": ANGEL_CLIENT_CODE
+        }
+        r = requests.post(url, json=body, headers=headers).json()
+        data = r.get("data") or {}
+        rows.append((sym, data.get("ltp"), data.get("volume")))
+        time.sleep(0.2)
+    return rows
 
-def get_52_week_high(df):
-    df = df[df["yearHigh"]>0]
-    return df[df["lastPrice"]>=df["yearHigh"]*0.98].sort_values("lastPrice", ascending=False).head(5)
-
+# ─── Main Scan ────────────────────────────────────────────────────────────────
 def scan():
     try:
-        api = angel_login()
-        df  = fetch_market_data(api)
-        top_vol = get_top_volume(df)
-        top_52  = get_52_week_high(df)
+        jwt_token = mpin_login()
+        send("✅ MPIN Login OK — Starting scan")
 
-        now = datetime.now().strftime("%d-%b %H:%M")
-        msg = f"📊 *Market Scan* — {now}\n\n"
+        market = fetch_market(jwt_token)
+        # Top 5 by volume:
+        top_vol = sorted([r for r in market if r[2]], key=lambda x: x[2], reverse=True)[:5]
 
-        if not top_vol.empty:
-            msg += "🔥 *Top 5 Volume Stocks:*\n"
-            for _, r in top_vol.iterrows():
-                msg += f"• {r['symbol']} — ₹{r['lastPrice']} | Vol: {r['volume']}\n"
-        else:
-            msg += "⚠️ No volume data.\n"
-
-        if not top_52.empty:
-            msg += "\n📈 *Near 52W High:*\n"
-            for _, r in top_52.iterrows():
-                msg += f"• {r['symbol']} — ₹{r['lastPrice']} (52WH: ₹{r['yearHigh']})\n"
-        else:
-            msg += "⚠️ No 52-week high stocks.\n"
-
-        send_telegram_message(msg)
+        msg = "🔥 Top 5 Volume Stocks:\n" + "\n".join(
+            f"{s} — ₹{p} | Vol:{v}" for s,p,v in top_vol
+        )
+        send(msg)
 
     except Exception as e:
-        send_telegram_message(f"❌ Scanner Error: {e}")
+        send(f"❌ Scanner Error: {e}")
 
 if __name__ == "__main__":
     scan()
