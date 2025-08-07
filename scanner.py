@@ -1,58 +1,33 @@
 import os
-import json
+import time
+import pyotp
 import requests
 from SmartApi.smartConnect import SmartConnect
 
-# Environment variables
+# ✅ Load env variables
 API_KEY = os.getenv("ANGEL_API_KEY")
-ACCESS_TOKEN = os.getenv("ANGEL_ACCESS_TOKEN")
 CLIENT_CODE = os.getenv("ANGEL_CLIENT_CODE")
+PASSWORD = os.getenv("ANGEL_PASSWORD")
+TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Mapping of stock symbols to their NSE token IDs
-symbol_token_map = {
-    "RELIANCE": "2885",
-    "TCS": "11536"
-    # Add more symbols and their NSE token IDs here
-}
-
-# Initialize Angel One client
-obj = SmartConnect(api_key=API_KEY)
-obj.setAccessToken(ACCESS_TOKEN)
-
-# Function to fetch LTP
-def get_ltp(symbol):
+# ✅ Angel Login Function
+def angel_login():
     try:
-        params = {
-            "exchange": "NSE",
-            "tradingsymbol": symbol,
-            "symboltoken": symbol_token_map[symbol]
-        }
+        obj = SmartConnect(api_key=API_KEY)
+        totp = pyotp.TOTP(TOTP_SECRET).now()
 
-        response = obj.get_ltp_data(params)
-
-        if not response or "data" not in response:
-            return "Error: Invalid response"
-
-        if response.get("status") != "success":
-            return f"Error: {response.get('message', 'status')}"
-
-        ltp = response["data"]["ltp"]
-        return f"₹{ltp}"
-
+        data = obj.generateSession(clientCode=CLIENT_CODE, password=PASSWORD, totp=totp)
+        refreshToken = data['data']['refreshToken']
+        userProfile = obj.getProfile(refreshToken)
+        return obj
     except Exception as e:
-        return f"Error: {str(e)}"
+        send_telegram_message(f"❌ Angel login failed:\n{e}")
+        return None
 
-# Prepare message
-def prepare_message(symbols):
-    message = "📊 *LTP Update:*\n"
-    for symbol in symbols:
-        ltp = get_ltp(symbol)
-        message += f"• {symbol}: {ltp}\n"
-    return message
-
-# Send Telegram message
+# ✅ Telegram Send Function
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
@@ -61,14 +36,35 @@ def send_telegram_message(message):
         "parse_mode": "Markdown"
     }
     try:
-        response = requests.post(url, json=payload)
-        if response.status_code != 200:
-            print("❌ Failed to send Telegram message")
+        requests.post(url, data=payload)
     except Exception as e:
-        print(f"❌ Telegram error: {e}")
+        print(f"Telegram error: {e}")
 
-# Main script
-if __name__ == "__main__":
-    stock_list = ["RELIANCE", "TCS"]  # Add more as needed
-    message = prepare_message(stock_list)
+# ✅ Get LTP
+def get_ltp(obj, exchange, symbol, token):
+    try:
+        data = obj.get_ltp_data(exchange=exchange, tradingsymbol=symbol, symboltoken=token)
+        return data['data']['ltp']
+    except Exception as e:
+        return f"Error: {e}"
+
+# ✅ Main Function
+def main():
+    obj = angel_login()
+    if not obj:
+        return
+
+    stocks = [
+        {"symbol": "RELIANCE", "token": "2885"},
+        {"symbol": "TCS", "token": "11536"}
+    ]
+
+    message = "📊 *LTP Update:*"
+    for stock in stocks:
+        ltp = get_ltp(obj, "NSE", stock["symbol"], stock["token"])
+        message += f"\n• {stock['symbol']}: ₹{ltp}"
+
     send_telegram_message(message)
+
+if __name__ == "__main__":
+    main()
