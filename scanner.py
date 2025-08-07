@@ -25,16 +25,12 @@ def send_telegram(text: str):
     except Exception as e:
         print("Telegram error:", e)
 
-# ─── Main ────────────────────────────────────────────────────────────────────────
+# ─── Main smoke‐plus‐LTP test ─────────────────────────────────────────────────────
 def main():
     # 1) Login to Angel One
     client = SmartConnect(api_key=API_KEY)
     totp   = pyotp.TOTP(TOTP_SECRET).now()
-    resp   = client.generateSession(
-        clientCode=CLIENT_CODE,
-        password=M_PIN,
-        totp=totp
-    )
+    resp   = client.generateSession(clientCode=CLIENT_CODE, password=M_PIN, totp=totp)
 
     # 2) Extract and set jwtToken
     data = resp.get("data") or {}
@@ -44,8 +40,11 @@ def main():
         return
     client.setAccessToken(jwt)
 
-    # 3) Fetch LTP for RELIANCE (token = "2885")
-    ltp_resp = client.ltpData("NSE", "2885")
+    # 3) Fetch LTP for RELIANCE (token="2885")
+    #    Must pass: exchange, tradingsymbol, symboltoken
+    ltp_resp = client.ltpData("NSE", "RELIANCE", "2885")
+
+    # 4) Send result
     if ltp_resp.get("status") and ltp_resp.get("data"):
         ltp = ltp_resp["data"]["ltp"]
         send_telegram(f"📈 *RELIANCE LTP:* ₹{ltp}")
