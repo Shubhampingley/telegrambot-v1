@@ -3,10 +3,10 @@ import pyotp
 import requests
 from SmartApi.smartConnect import SmartConnect
 
-# ─── Config ─────────────────────────────────────────────────────────────────────
+# ─── Configuration ──────────────────────────────────────────────────────────────
 API_KEY     = os.getenv("ANGEL_API_KEY")
 CLIENT_CODE = os.getenv("ANGEL_CLIENT_CODE")
-M_PIN       = os.getenv("ANGEL_PASSWORD")     # your M-PIN
+PASSWORD    = os.getenv("ANGEL_PASSWORD")    # your M-PIN
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 TG_TOKEN    = os.getenv("TELEGRAM_TOKEN")
 TG_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
@@ -14,30 +14,43 @@ TG_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
 # ─── Helpers ────────────────────────────────────────────────────────────────────
 def send_telegram(text: str):
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    payload = {"chat_id": TG_CHAT_ID, "text": text}
+    payload = {
+        "chat_id": TG_CHAT_ID,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
     try:
         r = requests.post(url, data=payload)
-        print("Telegram:", r.status_code, r.text)
+        print("Telegram status:", r.status_code)
     except Exception as e:
         print("Telegram error:", e)
 
-# ─── Main ───────────────────────────────────────────────────────────────────────
+# ─── Main ────────────────────────────────────────────────────────────────────────
 def main():
-    # 1) Login
+    # 1) Login to Angel One
     client = SmartConnect(api_key=API_KEY)
     totp   = pyotp.TOTP(TOTP_SECRET).now()
-    resp   = client.generateSession(clientCode=CLIENT_CODE, password=M_PIN, totp=totp)
-    access = resp.get("data", {}).get("accessToken")
-    client.setAccessToken(access)
+    resp   = client.generateSession(
+        clientCode=CLIENT_CODE,
+        password=PASSWORD,
+        totp=totp
+    )
 
-    # 2) Fetch LTP for RELIANCE
-    #    First search to get token
-    search = client.searchScrip("NSE", "RELIANCE")
-    token  = search["data"]["token"]
-    ltp    = client.ltpData("NSE", token)["data"]["ltp"]
+    # Validate login response
+    data = resp.get("data") or {}
+    access_token = data.get("accessToken")
+    if not access_token:
+        send_telegram(f"❌ Angel login failed:\n```{resp}```")
+        return
+    client.setAccessToken(access_token)
 
-    # 3) Send result
-    send_telegram(f"📈 RELIANCE LTP: ₹{ltp}")
+    # 2) Fetch LTP for RELIANCE (token "2885")
+    ltp_resp = client.ltpData("NSE", "2885")
+    if ltp_resp.get("status") and ltp_resp.get("data"):
+        ltp = ltp_resp["data"].get("ltp")
+        send_telegram(f"📈 RELIANCE LTP: ₹{ltp}")
+    else:
+        send_telegram(f"❌ LTP fetch failed:\n```{ltp_resp}```")
 
 if __name__ == "__main__":
     main()
