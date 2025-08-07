@@ -6,28 +6,24 @@ from SmartApi.smartConnect import SmartConnect
 # ─── Configuration ──────────────────────────────────────────────────────────────
 API_KEY     = os.getenv("ANGEL_API_KEY")
 CLIENT_CODE = os.getenv("ANGEL_CLIENT_CODE")
-M_PIN       = os.getenv("ANGEL_PASSWORD")     # your M-PIN
+M_PIN       = os.getenv("ANGEL_PASSWORD")    # your M-PIN
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
 TG_TOKEN    = os.getenv("TELEGRAM_TOKEN")
 TG_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
 
-# ─── Helper to send Telegram messages ────────────────────────────────────────────
+# ─── Telegram helper ─────────────────────────────────────────────────────────────
 def send_telegram(text: str):
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TG_CHAT_ID,
-        "text": text,
-        "parse_mode": "Markdown"
-    }
+    payload = {"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "Markdown"}
     try:
-        r = requests.post(url, data=payload)
-        print("Telegram status:", r.status_code)
-    except Exception as e:
-        print("Telegram error:", e)
+        resp = requests.post(url, data=payload)
+        print("Telegram status:", resp.status_code)
+    except Exception:
+        pass
 
-# ─── Main smoke‐plus‐LTP test ─────────────────────────────────────────────────────
+# ─── Main ────────────────────────────────────────────────────────────────────────
 def main():
-    # 1) Login to Angel One
+    # 1) Login & grab tokens
     client = SmartConnect(api_key=API_KEY)
     totp   = pyotp.TOTP(TOTP_SECRET).now()
     resp   = client.generateSession(
@@ -36,25 +32,23 @@ def main():
         totp=totp
     )
 
-    data = resp.get("data") or {}
-    jwt       = data.get("jwtToken")
-    feedToken = data.get("feedToken")
+    data       = resp.get("data") or {}
+    refresh    = data.get("refreshToken")
+    feed_token = data.get("feedToken")
 
-    if not jwt or not feedToken:
-        send_telegram(f"❌ Angel login failed:\n```{resp}```")
+    if not refresh or not feed_token:
+        send_telegram(f"❌ Login failed – response:\n```{resp}```")
         return
 
-    # 2) Set both tokens
-    client.setAccessToken(jwt)
-    client.setFeedToken(feedToken)
+    # 2) Set tokens for subsequent calls
+    client.setAccessToken(refresh)    # use refreshToken here
+    client.setFeedToken(feed_token)
 
-    # 3) Fetch LTP for RELIANCE (must pass exchange, symbol, token)
+    # 3) Fetch LTP for RELIANCE (token=2885)
     ltp_resp = client.ltpData("NSE", "RELIANCE", "2885")
-
-    # 4) Send result
     if ltp_resp.get("status") and ltp_resp.get("data"):
-        ltp = ltp_resp["data"]["ltp"]
-        send_telegram(f"📈 *RELIANCE LTP:* ₹{ltp}")
+        price = ltp_resp["data"]["ltp"]
+        send_telegram(f"📈 *RELIANCE LTP:* ₹{price}")
     else:
         send_telegram(f"❌ LTP fetch failed:\n```{ltp_resp}```")
 
