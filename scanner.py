@@ -2,60 +2,79 @@ import os
 import time
 import pyotp
 import requests
-from smartapi.smartConnect import SmartConnect
+from SmartApi.smartConnect import SmartConnect
+from dotenv import load_dotenv
 
-# Load secrets from environment
+# Load .env secrets
+load_dotenv()
+
+# Required ENV variables
+REQUIRED_VARS = [
+    "ANGEL_API_KEY", "ANGEL_CLIENT_CODE", "ANGEL_PASSWORD",
+    "ANGEL_TOTP_SECRET", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"
+]
+
+missing = [var for var in REQUIRED_VARS if not os.getenv(var)]
+if missing:
+    raise Exception(f"Missing environment variables: {', '.join(missing)}")
+
+# Read env vars
 API_KEY = os.getenv("ANGEL_API_KEY")
 CLIENT_CODE = os.getenv("ANGEL_CLIENT_CODE")
 PASSWORD = os.getenv("ANGEL_PASSWORD")
 TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
-
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+
 def send_telegram(message: str):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
     try:
-        response = requests.post(url, json=payload)
-        print(f"Telegram status: {response.status_code}")
+        res = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            data={"chat_id": TELEGRAM_CHAT_ID, "text": message}
+        )
+        if not res.ok:
+            print("Telegram error:", res.text)
     except Exception as e:
-        print(f"Telegram Error: {e}")
+        print("Failed to send Telegram message:", e)
 
-def angel_login():
+
+def get_totp(secret: str):
     try:
-        totp = pyotp.TOTP(TOTP_SECRET).now()
-        client = SmartConnect(api_key=API_KEY)
-        data = client.generateSession(CLIENT_CODE, PASSWORD, totp)
-        if "data" not in data or "accessToken" not in data["data"]:
-            send_telegram("❌ Login Failed: 'accessToken' not received")
-            print("Login failed:", data)
-            return None, None
-        access_token = data["data"]["accessToken"]
-        client.setSessionExpiryHook(lambda: print("Session expired"))
-        return client, access_token
+        return pyotp.TOTP(secret).now()
     except Exception as e:
-        send_telegram(f"❌ Exception during login: {e}")
-        return None, None
+        send_telegram(f"❌ TOTP generation failed: {e}")
+        raise
 
-def fetch_sample_ltp(client):
+
+def login_to_angel():
     try:
-        # NSE NIFTY index example (symbolToken = "99926009", symbol = "NIFTY")
-        resp = client.ltpData(exchange="NSE", tradingsymbol="NIFTY", symboltoken="99926009")
-        if resp.get("status") and "data" in resp:
-            ltp = resp["data"]["ltp"]
-            send_telegram(f"✅ NIFTY LTP: {ltp}")
-        else:
-            send_telegram(f"⚠️ Failed to fetch LTP: {resp}")
+        obj = SmartConnect(api_key=API_KEY)
+        totp = get_totp(TOTP_SECRET)
+        data = obj.generateSession(CLIENT_CODE, PASSWORD, totp)
+        if "data" not in data or "jwtToken" not in data["data"]:
+            send_telegram("❌ Login failed. Invalid credentials or TOTP.")
+            raise Exception("Login failed.")
+        return obj
     except Exception as e:
-        send_telegram(f"❌ Error fetching LTP: {e}")
+        send_telegram(f"❌ Angel Login failed: {e}")
+        raise
 
-def main():
-    client, token = angel_login()
-    if not client:
-        return
-    send_telegram("✅ Angel One Login Successful")
-    fetch_sample_ltp(client)
+
+def test_stock_fetch(api):
+    try:
+        result = api.getLTPData("NSE", "RELIANCE-EQ")
+        ltp = result["data"]["ltp"]
+        send_telegram(f"✅ Angel API Test Success:\nRELIANCE LTP: ₹{ltp}")
+    except Exception as e:
+        send_telegram(f"❌ Failed to fetch LTP: {e}")
+        raise
+
 
 if __name__ == "__main__":
-    main()
+    try:
+        angel_api = login_to_angel()
+        test_stock_fetch(angel_api)
+    except Exception as e:
+        print("Error:", e)
+        send_telegram(f"❌ Critical Error: {e}")
