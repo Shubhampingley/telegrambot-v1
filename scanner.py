@@ -30,18 +30,25 @@ def main():
     # 1) Login to Angel One
     client = SmartConnect(api_key=API_KEY)
     totp   = pyotp.TOTP(TOTP_SECRET).now()
-    resp   = client.generateSession(clientCode=CLIENT_CODE, password=M_PIN, totp=totp)
+    resp   = client.generateSession(
+        clientCode=CLIENT_CODE,
+        password=M_PIN,
+        totp=totp
+    )
 
-    # 2) Extract and set jwtToken
     data = resp.get("data") or {}
-    jwt  = data.get("jwtToken")
-    if not jwt:
+    jwt       = data.get("jwtToken")
+    feedToken = data.get("feedToken")
+
+    if not jwt or not feedToken:
         send_telegram(f"❌ Angel login failed:\n```{resp}```")
         return
-    client.setAccessToken(jwt)
 
-    # 3) Fetch LTP for RELIANCE (token="2885")
-    #    Must pass: exchange, tradingsymbol, symboltoken
+    # 2) Set both tokens
+    client.setAccessToken(jwt)
+    client.setFeedToken(feedToken)
+
+    # 3) Fetch LTP for RELIANCE (must pass exchange, symbol, token)
     ltp_resp = client.ltpData("NSE", "RELIANCE", "2885")
 
     # 4) Send result
