@@ -1,7 +1,7 @@
 name: Simple API + Telegram Check
 
 on:
-  workflow_dispatch: # run manually from GitHub Actions
+  workflow_dispatch: # run manually
 
 jobs:
   run-simple-check:
@@ -16,7 +16,8 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install smartapi-python pyotp python-dotenv requests
+        run: |
+          pip install smartapi-python pyotp python-dotenv requests
 
       - name: Run simple check
         env:
