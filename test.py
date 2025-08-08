@@ -1,10 +1,10 @@
 import os
 import pyotp
 import requests
-from smartapi import SmartConnect
+from SmartApi import SmartConnect  # ✅ Correct import
 from dotenv import load_dotenv
 
-# Load secrets from GitHub or .env
+# Load secrets from environment (GitHub Secrets or .env file)
 load_dotenv()
 
 ANGEL_API_KEY = os.getenv("ANGEL_API_KEY")
@@ -15,6 +15,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def send_telegram(message):
+    """Send a message to Telegram."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
     requests.post(url, data=data)
@@ -30,7 +31,7 @@ def main():
         data = obj.ltpData("NSE", "RELIANCE-EQ", "RELIANCE-EQ")
         price = data['data']['ltp']
 
-        # Send to Telegram
+        # Send price to Telegram
         send_telegram(f"RELIANCE-EQ Price: ₹{price}")
         print(f"✅ Price sent to Telegram: ₹{price}")
 
