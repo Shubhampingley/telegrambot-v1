@@ -1,7 +1,7 @@
 name: Simple API + Telegram Check
 
 on:
-  workflow_dispatch: # run manually
+  workflow_dispatch: # run manually from GitHub Actions
 
 jobs:
   run-simple-check:
