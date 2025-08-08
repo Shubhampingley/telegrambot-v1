@@ -1,64 +1,42 @@
 import os
 import pyotp
 import requests
-from telegram import Bot
+from smartapi import SmartConnect
+from dotenv import load_dotenv
 
-# ─── Load secrets ─────────────────────────────────────────────────────────────
-TELEGRAM_TOKEN    = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
-ANGEL_API_KEY     = os.getenv("ANGEL_API_KEY")
+# Load secrets from GitHub or .env
+load_dotenv()
+
+ANGEL_API_KEY = os.getenv("ANGEL_API_KEY")
 ANGEL_CLIENT_CODE = os.getenv("ANGEL_CLIENT_CODE")
-ANGEL_MPIN        = os.getenv("ANGEL_MPIN")
+ANGEL_PASSWORD = os.getenv("ANGEL_PASSWORD")
 ANGEL_TOTP_SECRET = os.getenv("ANGEL_TOTP_SECRET")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-bot = Bot(token=TELEGRAM_TOKEN)
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
+    requests.post(url, data=data)
 
-def send(msg):
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg)
-
-def test_login_and_telegram():
-    # 1) Generate TOTP
-    totp = pyotp.TOTP(ANGEL_TOTP_SECRET).now()
-
-    # 2) Call Angel One MPIN login endpoint
-    url = "https://apiconnect.angelbroking.com/rest/secure/angelbroking/userauth/v1/loginByPin"
-    headers = {
-        "X-API-Key": ANGEL_API_KEY,
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "clientcode": ANGEL_CLIENT_CODE,
-        "mpin": ANGEL_MPIN,
-        "totp": totp
-    }
-
+def main():
     try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        # Login to Angel One
+        obj = SmartConnect(api_key=ANGEL_API_KEY)
+        totp = pyotp.TOTP(ANGEL_TOTP_SECRET).now()
+        obj.generateSession(ANGEL_CLIENT_CODE, ANGEL_PASSWORD, totp)
+
+        # Fetch price for RELIANCE-EQ
+        data = obj.ltpData("NSE", "RELIANCE-EQ", "RELIANCE-EQ")
+        price = data['data']['ltp']
+
+        # Send to Telegram
+        send_telegram(f"RELIANCE-EQ Price: ₹{price}")
+        print(f"✅ Price sent to Telegram: ₹{price}")
+
     except Exception as e:
-        send(f"❌ HTTP request failed: {e}")
-        return
-
-    # 3) Report HTTP status & raw body
-    status = resp.status_code
-    body = resp.text or "<empty>"
-    send(f"🔍 HTTP {status}\n{body}")
-
-    # 4) Try parsing JSON
-    try:
-        data = resp.json()
-    except Exception as e:
-        send(f"❌ JSON parse error: {e}")
-        return
-
-    # 5) Send JSON response summary
-    send(f"🔍 Parsed JSON:\n{data}")
-
-    # 6) Success check
-    if data.get("status") and data.get("data", {}).get("jwtToken"):
-        send("✅ Test Successful: MPIN login & Telegram working!")
-    else:
-        msg = data.get("message") or "Unknown error"
-        send(f"❌ Test Failed: {msg}")
+        send_telegram(f"❌ Error: {e}")
+        print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
-    test_login_and_telegram()
+    main()
