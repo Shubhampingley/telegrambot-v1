@@ -17,7 +17,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install smartapi-python pyotp python-dotenv requests
+          pip install smartapi-python logzero pyotp python-dotenv requests
 
       - name: Run simple check
         env:
